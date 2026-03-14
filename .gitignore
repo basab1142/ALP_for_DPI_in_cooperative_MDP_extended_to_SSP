@@ -1,2 +1,5 @@
 \.mypy_cache
 \.venv
+__pycache__
+policy.npy
+weights.npy
