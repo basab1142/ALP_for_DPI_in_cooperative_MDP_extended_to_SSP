@@ -89,7 +89,7 @@ class SpiderFlyEnv:
         reward = -1
 
         if collided:
-            reward -= 2 
+            reward -= 10
 
         return reward
 
@@ -132,3 +132,35 @@ class SpiderFlyEnv:
 
 
         return current_state, collided
+
+    def simulate_joint_step(self, state, a1, a2):
+
+        s = state.copy()
+
+        # compute intended moves
+        def move(pos, action):
+            x, y = pos
+            if action == 0:
+                y = min(y + 1, self.grid_size - 1)
+            elif action == 1:
+                y = max(y - 1, 0)
+            elif action == 2:
+                x = max(x - 1, 0)
+            elif action == 3:
+                x = min(x + 1, self.grid_size - 1)
+            return np.array([x, y])
+
+        p1 = move(s[0:2], a1)
+        p2 = move(s[2:4], a2)
+
+        # collision: both try same cell
+        if np.array_equal(p1, p2):
+            return s.copy(), True, True
+
+        # otherwise both move
+        new_state = np.array([p1[0], p1[1], p2[0], p2[1]])
+
+        c1 = np.array_equal(p1, s[2:4])
+        c2 = np.array_equal(p2, s[0:2])
+
+        return new_state, c1, c2
