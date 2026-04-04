@@ -8,7 +8,6 @@ def approximate_linear_programming(env, max_iterations=100):
     agents = env.num_agents
     grid = env.grid_size
 
-    # 🔥 FIX 1: remove constant feature
     feature_dimension = agents + 2
 
     num_states = grid ** (2 * agents)
@@ -60,7 +59,7 @@ def approximate_linear_programming(env, max_iterations=100):
 
         A_ub, b_ub, A_eq, b_eq = build_alp(env, policy, Phi)
 
-        # 🔥 FIX: bounds prevent unboundedness
+        # Bounds prevent unboundedness
         bounds = [(-100, 100)] * 4 + [(0, None)]
 
         res = linprog(
@@ -134,7 +133,7 @@ def approximate_linear_programming(env, max_iterations=100):
                                 best_q = q
                                 policy[1][i, j, k, l] = a2
 
-        # 🔥 FIX: convergence check
+        # Convergence check
         if all(np.array_equal(policy[i], old_policy[i]) for i in range(agents)):
             print("Converged.")
             break
@@ -148,12 +147,11 @@ def build_alp(env, policy, Phi):
     grid = env.grid_size
 
     A_ub, b_ub = [], []
-    A_eq, b_eq = [], []
 
     def get_idx(s):
         return s[0]*grid**3 + s[1]*grid**2 + s[2]*grid + s[3]
 
-    # 🔥 FIX: sampling
+    # Sampling
     all_states = [(i,j,k,l) for i in range(grid)
                               for j in range(grid)
                               for k in range(grid)
@@ -171,7 +169,7 @@ def build_alp(env, policy, Phi):
             (k==env.fly_pos[0] and l==env.fly_pos[1])
         )
 
-        # 🔥 FIX: terminal as inequality
+        # Terminal as inequality
         if is_terminal:
             row = np.zeros(d+1)
             row[:d] = Phi[s_idx]
@@ -202,7 +200,7 @@ def build_alp(env, policy, Phi):
         A_ub.append(lhs)
         b_ub.append(cost)
 
-    # 🔥 FIX: single anchor constraint
+    # Single anchor constraint
     start_state = np.array([0,0,0,grid-1])
     start_idx = get_idx(start_state)
 
