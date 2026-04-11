@@ -19,7 +19,7 @@ import pandas as pd
 
 def DPIm(i, mu_updated, mu_base, J, transition_probs, costs, state_space, action_spaces, alpha=1.0):
     """
-    Decentralized Policy Improvement for agent i.
+    Decentralized Policy Improvement for agent i
 
     Args:
         i          : Index of the agent being updated (0-indexed).
