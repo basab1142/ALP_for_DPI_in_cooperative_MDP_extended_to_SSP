@@ -542,118 +542,77 @@ def improve_policy_fh(V, state_space, action_spaces,
 #     return policy, trajectory
 
 def DPI_ALP_FH_iterative(transition_probs, costs, state_space, action_spaces,
-                        Phi, c, horizon, T_outer=30):
-
+                         Phi, c, horizon, terminal_cost, T_outer=30):
     m = len(action_spaces)
-
-    # random initial policy (same policy for all stages)
-    mu = [{x: np.random.choice(action_spaces[i]) for x in state_space}
-          for i in range(m)]
-
+    mu = [{x: np.random.choice(action_spaces[i]) for x in state_space} for i in range(m)]
     trajectory = []
-
     for t in range(T_outer):
-
-        # build stationary policy across horizon
+        # Use current mu for evaluation
         policy = [mu for _ in range(horizon)]
-
-        # --- ALP evaluation (stage-wise backward) ---
-        J = np.zeros(len(state_space))
-
+        J = terminal_cost.copy()
         for k in reversed(range(horizon)):
-            J = CACFN_FH(k, policy, J, transition_probs, costs,
-                         state_space, Phi, c)
-
-        # --- policy improvement ---
+            J = CACFN_FH(k, policy, J, transition_probs, costs, state_space, Phi, c)
+        # Improve policy
         mu_updated = []
         for i in range(m):
             mu_base = [mu[j] for j in range(i+1, m)]
-            mu_i_new = DPIm(
-                i, mu_updated, mu_base,
-                J, transition_probs, costs,
-                state_space, action_spaces, alpha=1.0
-            )
+            mu_i_new = DPIm(i, mu_updated, mu_base, J, transition_probs, costs,
+                            state_space, action_spaces, alpha=1.0)
             mu_updated.append(mu_i_new)
-
         mu = mu_updated
-
-        # --- rollout reward ---
-        r = rollout_fh(policy, transition_probs, costs,
-                       state_space, horizon)
+        # Rollout the NEW policy
+        new_policy = [mu for _ in range(horizon)]
+        r = rollout_fh(new_policy, transition_probs, costs, state_space, horizon, terminal_cost)
         trajectory.append(r)
-
     return trajectory
 
 
-def exact_fh_policy_iteration(transition_probs, costs, state_space, action_spaces, horizon, T_outer=30):
-
+def exact_fh_policy_iteration(transition_probs, costs, state_space, action_spaces,
+                              horizon, terminal_cost, gamma=1.0, T_outer=30):
     m = len(action_spaces)
-
-    mu = [{x: np.random.choice(action_spaces[i]) for x in state_space}
-          for i in range(m)]
-
+    mu = [{x: np.random.choice(action_spaces[i]) for x in state_space} for i in range(m)]
     trajectory = []
-
-    joint_actions = list(itertools.product(*action_spaces))
-
-    for t in range(T_outer):
-
-        # --- exact evaluation ---
-        V = np.zeros(len(state_space))
-
-        for k in reversed(range(horizon)):
-            V_new = np.zeros_like(V)
-            for x in state_space:
-                best = np.inf
-                for u in joint_actions:
-                    probs = transition_probs(x, u)
-                    val = sum(probs[y] * costs(x, y, u) for y in state_space) \
-                          + sum(probs[y] * V[y] for y in state_space)
-                    best = min(best, val)
-                V_new[x] = best
-            V = V_new
-
-        # --- improve ---
-        mu = extract_greedy_policy(
-            V, state_space, action_spaces,
-            transition_probs, costs, gamma=1.0
-        )
-
-        # --- rollout ---
+    for _ in range(T_outer):
         policy = [mu for _ in range(horizon)]
-        r = rollout_fh(policy, transition_probs, costs,
-                       state_space, horizon)
+        # Policy evaluation
+        V = terminal_cost.copy()
+        for k in range(horizon-1, -1, -1):
+            V_new = np.zeros(len(state_space))
+            for x in state_space:
+                u = tuple(policy[k][i][x] for i in range(m))
+                probs = transition_probs(x, u)
+                imm_cost = sum(probs[y] * costs(x, y, u) for y in state_space)
+                future = np.dot(probs, V)
+                V_new[x] = imm_cost + gamma * future
+            V = V_new
+        # Policy improvement
+        mu = extract_greedy_policy(V, state_space, action_spaces, transition_probs, costs, gamma)
+        # Rollout the NEW policy
+        new_policy = [mu for _ in range(horizon)]
+        r = rollout_fh(new_policy, transition_probs, costs, state_space, horizon, terminal_cost, gamma)
         trajectory.append(r)
-
     return trajectory
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def rollout_fh(policy, transition_probs, costs, state_space, horizon, gamma=1.0):
+def rollout_fh(policy, transition_probs, costs, state_space, horizon, terminal_cost, gamma=1.0):
     x = np.random.choice(state_space)
-    total_reward = 0.0
+    total_cost = 0.0
     discount = 1.0
-
-    T = len(policy) if horizon is None else min(horizon, len(policy))
-
-    for k in range(T):
-        mu_k = policy[k]
-        u = tuple(mu_k[i][x] for i in range(len(mu_k)))
-
+    
+    for t in range(horizon):
+        mu_t = policy[t]
+        u = tuple(mu_t[i][x] for i in range(len(mu_t)))
         probs = transition_probs(x, u)
         y = np.random.choice(state_space, p=probs)
-
         cost = costs(x, y, u)
-        reward = -cost
-
-        total_reward += discount * reward
+        total_cost += discount * cost
         discount *= gamma
         x = y
-
-    return total_reward
-
+    total_cost += discount * terminal_cost[x]   # add terminal cost
+    return -total_cost   # return reward
 
 def rollout_ih(mu, transition_probs, costs, state_space, horizon=50, gamma=0.95):
     x = np.random.choice(state_space)
@@ -917,7 +876,7 @@ if __name__ == "__main__":
     # )
     # print(f"IH approx. cost (first 5 states): {J_ih[:5].round(3)}")
 
-    traj_fh = DPI_ALP_FH_iterative(transition_probs, env_costs, state_space_int, action_spaces, Phi, c_weights, HORIZON)
+    traj_fh = DPI_ALP_FH_iterative(transition_probs, env_costs, state_space_int, action_spaces, Phi, c_weights, HORIZON, terminal_cost)
 
     # Exact finite horizon (backward induction)
     traj_exact_fh = exact_fh_policy_iteration(
@@ -926,6 +885,7 @@ if __name__ == "__main__":
         state_space_int,
         action_spaces,
         horizon=HORIZON,
+        terminal_cost=terminal_cost
     )
     # print("Exact FH (N=10):", V_exact_fh[:5].round(3))
 
@@ -936,12 +896,10 @@ if __name__ == "__main__":
     # )
     # print("Exact IH (γ=0.95):", V_exact_ih[:5].round(3))
 
-    traj_fh_avg = running_avg(traj_fh)
     # traj_ih_avg = running_avg(traj_ih)
-    traj_exact_fh_avg = running_avg(traj_exact_fh)
     # traj_exact_ih_avg = running_avg(traj_exact_ih)
 
-    plot_fh(np.array([traj_fh_avg]), np.array([traj_exact_fh_avg]), window=3, save_path='rolling_avg_fh.png')
+    plot_fh(np.array([traj_fh]), np.array([traj_exact_fh]), window=3, save_path='rolling_avg_fh.png')
     # plot_ih(np.array([traj_ih_avg]), np.array([traj_exact_ih_avg]), window=3, save_path='rolling_avg_ih.png')
     print("Done.")
 
