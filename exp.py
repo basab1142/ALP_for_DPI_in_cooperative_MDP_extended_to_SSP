@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 from scipy.optimize import linprog
 
 # ========================== Environment (same as before) ==========================
+# ========================== Environment (Flies-Spiders with absorbing flies) ==========================
+# ========================== Environment (Flies-Spiders with absorbing flies) ==========================
 GRID = 4
 N_STATES_PER = GRID * GRID
 ACTIONS = ["up", "down", "left", "right"]
@@ -17,60 +19,128 @@ N_AGENTS = 2
 HORIZON = 10
 ALPHA = 0.95
 
-def idx(r, c): return r * GRID + c
-def pos(s): return divmod(s, GRID)
+
+def pos_to_idx(r, c):
+    return r * GRID + c
+
+
+def pos(s):
+    return divmod(s, GRID)
+
 
 def move(r, c, action):
-    dr, dc = {"up": (-1,0), "down": (1,0), "left": (0,-1), "right": (0,1)}[action]
-    nr, nc = r+dr, c+dc
+    dr, dc = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}[action]
+    nr, nc = r + dr, c + dc
     if 0 <= nr < GRID and 0 <= nc < GRID:
         return nr, nc
     return r, c
 
+
 def out_of_grid(r, c, action):
-    dr, dc = {"up": (-1,0), "down": (1,0), "left": (0,-1), "right": (0,1)}[action]
-    nr, nc = r+dr, c+dc
+    dr, dc = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}[action]
+    nr, nc = r + dr, c + dc
     return not (0 <= nr < GRID and 0 <= nc < GRID)
 
-joint_states_list = list(itertools.product(range(N_STATES_PER), range(N_STATES_PER)))
-n_joint = len(joint_states_list)
-state_space = list(range(n_joint))
-state_index = {s: i for i, s in enumerate(joint_states_list)}
+
+fly_positions = {(0, 0), (3, 3)}
+
+# Build extended state space: (pos0, pos1, f0_caught, f1_caught)
+extended_states = []
+state_to_idx = {}
+state_idx = 0
+for s0 in range(N_STATES_PER):
+    for s1 in range(N_STATES_PER):
+        for f0 in (0, 1):
+            for f1 in (0, 1):
+                extended_states.append((s0, s1, f0, f1))
+                state_to_idx[(s0, s1, f0, f1)] = state_idx
+                state_idx += 1
+n_states = len(extended_states)
+state_space = list(range(n_states))
+
+
+def get_positions_and_flags(state_idx):
+    return extended_states[state_idx]
+
+
 action_spaces = [list(range(len(ACTIONS))), list(range(len(ACTIONS)))]
 
+
 def transition_probs(x_int, u_joint):
-    s0, s1 = joint_states_list[x_int]
-    r0, c0 = pos(s0); r1, c1 = pos(s1)
+    s0, s1, f0, f1 = extended_states[x_int]
     a0, a1 = ACTIONS[u_joint[0]], ACTIONS[u_joint[1]]
-    nr0, nc0 = move(r0, c0, a0)
-    nr1, nc1 = move(r1, c1, a1)
-    ns = (idx(nr0, nc0), idx(nr1, nc1))
-    probs = np.zeros(n_joint)
-    probs[state_index[ns]] = 1.0
+    r0, c0 = pos(s0)
+    r1, c1 = pos(s1)
+
+    if f0:
+        nr0, nc0 = r0, c0
+    else:
+        nr0, nc0 = move(r0, c0, a0)
+    if f1:
+        nr1, nc1 = r1, c1
+    else:
+        nr1, nc1 = move(r1, c1, a1)
+
+    nf0 = f0
+    nf1 = f1
+    if not f0 and (nr0, nc0) in fly_positions:
+        nf0 = 1
+    if not f1 and (nr1, nc1) in fly_positions:
+        nf1 = 1
+
+    # If both caught, stay in the same state (absorbing)
+    if f0 and f1:
+        ns = x_int  # stay in same state (already absorbing)
+    else:
+        ns = state_to_idx[(pos_to_idx(nr0, nc0), pos_to_idx(nr1, nc1), nf0, nf1)]
+
+    probs = np.zeros(n_states)
+    probs[ns] = 1.0
     return probs
 
+
 def env_costs(x_int, y_int, u_joint):
-    s0, s1 = joint_states_list[x_int]
-    r0, c0 = pos(s0); r1, c1 = pos(s1)
+    s0, s1, f0, f1 = extended_states[x_int]
+    # If both flies already caught, cost = 0
+    if f0 and f1:
+        return 0.0
     a0, a1 = ACTIONS[u_joint[0]], ACTIONS[u_joint[1]]
+    r0, c0 = pos(s0)
+    r1, c1 = pos(s1)
     cost = 1.0
-    if out_of_grid(r0, c0, a0) or out_of_grid(r1, c1, a1):
+    if not f0 and out_of_grid(r0, c0, a0):
         cost += 2.0
-    nr0, nc0 = move(r0, c0, a0)
-    nr1, nc1 = move(r1, c1, a1)
+    if not f1 and out_of_grid(r1, c1, a1):
+        cost += 2.0
+    if f0:
+        nr0, nc0 = r0, c0
+    else:
+        nr0, nc0 = move(r0, c0, a0)
+    if f1:
+        nr1, nc1 = r1, c1
+    else:
+        nr1, nc1 = move(r1, c1, a1)
     if (nr0, nc0) == (nr1, nc1):
         cost += 2.0
     return cost
 
-terminal_cost = np.ones(n_joint)
 
-# Features: constant + RBF (enough to represent constant value exactly)
-Phi = np.eye(n_joint)
+# Terminal cost for finite horizon: zero if both flies caught, else penalty
+terminal_cost = np.zeros(n_states)
+for i, (s0, s1, f0, f1) in enumerate(extended_states):
+    if f0 and f1:
+        terminal_cost[i] = 0.0
+    else:
+        terminal_cost[i] = 10.0  # penalty for not catching both flies
+
+# Features: one-hot (exact representation)
+Phi = np.eye(n_states)
 # np.random.seed(42)
 # centres = np.random.choice(n_joint, 20, replace=False)
 # Phi_rbf = np.exp(-0.1 * np.abs(np.arange(n_joint)[:, None] - centres))
 # Phi = np.hstack([Phi_const, Phi_rbf])
-c_weights = np.ones(n_joint) / n_joint
+c_weights = np.ones(n_states) / n_states
+
 
 # ========================== Core algorithms (from earlier) ==========================
 def DPIm(i, mu_updated, mu_base, J, trans, costs, state_space, action_spaces, alpha=1.0):
@@ -131,19 +201,23 @@ def CACFN_IH(mu, trans, costs, state_space, Phi, c, alpha):
         r_opt = np.zeros(d)
     return Phi @ r_opt
 
-def rollout_fh(policy, trans, costs, state_space, horizon, term_cost, gamma=1.0):
-    x = np.random.choice(state_space)
-    total_cost = 0.0
-    disc = 1.0
-    for t in range(horizon):
-        u = tuple(policy[t][i][x] for i in range(len(policy[0])))
-        probs = trans(x, u)
-        y = np.random.choice(state_space, p=probs)
-        total_cost += disc * costs(x, y, u)
-        disc *= gamma
-        x = y
-    total_cost += disc * term_cost[x]
-    return -total_cost
+def rollout_fh(policy, trans, costs, state_space, horizon, term_cost, gamma=1.0, n_episodes=100):
+    total_reward = 0.0
+    for _ in range(n_episodes):
+        x = np.random.choice(state_space)
+        total_cost = 0.0
+        disc = 1.0
+        for t in range(horizon):
+            u = tuple(policy[t][i][x] for i in range(len(policy[0])))
+            probs = trans(x, u)
+            y = np.random.choice(state_space, p=probs)
+            total_cost += disc * costs(x, y, u)
+            disc *= gamma
+            x = y
+        total_cost += disc * term_cost[x]
+        total_reward += -total_cost
+    return total_reward / n_episodes
+
 
 def rollout_ih(mu, trans, costs, state_space, horizon=500, gamma=0.95, n_episodes=100):
     n = len(state_space)
@@ -183,25 +257,39 @@ def extract_greedy_policy(V, state_space, action_spaces, trans, costs, gamma):
 def DPI_ALP_FH_iterative(trans, costs, state_space, action_spaces, Phi, c,
                          horizon, term_cost, T_outer=30):
     m = len(action_spaces)
-    # random stationary initial policy
     mu = [{x: np.random.choice(action_spaces[i]) for x in state_space} for i in range(m)]
     traj = []
+    prev_mu = None
     for _ in range(T_outer):
         policy = [mu for _ in range(horizon)]
         J = term_cost.copy()
         for k in reversed(range(horizon)):
             J = CACFN_FH(k, policy, J, trans, costs, state_space, Phi, c)
-        # improve
         mu_updated = []
         for i in range(m):
             mu_base = [mu[j] for j in range(i+1, m)]
             mu_i = DPIm(i, mu_updated, mu_base, J, trans, costs, state_space, action_spaces, alpha=1.0)
             mu_updated.append(mu_i)
-        mu = mu_updated
-        # rollout new policy
-        new_policy = [mu for _ in range(horizon)]
+        mu_new = mu_updated
+        new_policy = [mu_new for _ in range(horizon)]
         r = rollout_fh(new_policy, trans, costs, state_space, horizon, term_cost)
         traj.append(r)
+
+        # Policy convergence check
+        if prev_mu is not None:
+            converged = True
+            for i in range(m):
+                for x in state_space:
+                    if mu_new[i][x] != prev_mu[i][x]:
+                        converged = False
+                        break
+                if not converged:
+                    break
+            if converged:
+                print(f"  FH converged at iteration {len(traj)} (policy stable)")
+                break
+        prev_mu = mu_new
+        mu = mu_new
     return traj
 
 # ========================== Exact Finite Horizon DP (backward) ==========================
