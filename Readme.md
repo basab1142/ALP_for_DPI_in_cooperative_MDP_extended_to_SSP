@@ -1,10 +1,11 @@
-# Proof of SSP Algorithms stability
+# Proof of SSP Algorithms Stability
 
 ## Assumptions
 
 - **Proper Policies:** All policies considered are proper, i.e.,
   $$
-  \mathbb{P}_x^\mu(\tau < \infty) = 1, \quad \mathbb{E}_x^\mu[\tau] < \infty, \quad \forall x \in S.
+  \mathbb{P}_x^\mu(\tau < \infty) = 1, \quad 
+  \mathbb{E}_x^\mu[\tau] < \infty, \quad \forall x \in S.
   $$
 
 - **Bounded Costs:** There exists $g_{\max} < \infty$ such that
@@ -16,20 +17,21 @@
   $$
   \|J^\mu - J^{\text{ALP}}_\mu\|_\infty \le \beta,
   $$
-  for some $\beta > 0$ and $\beta < \infty$ is bounded.
+  where $\beta > 0$ is bounded.
 
 - **Expected Termination is Bounded:**
   $$
-  \sup_{x \in S} \mathbb{E}_x^{\mu_{t+1}} [\tau] \leq H.
+  \sup_{x \in S} \mathbb{E}_x^{\mu_{t+1}}[\tau] \le H.
   $$
 
 ---
 
 ## Bellman Equation
 
-The Bellman operator for a policy $\mu$ in the SSP setting is given by:
+The Bellman operator for a policy $\mu$ in the SSP setting is:
 $$
-(T_\mu J)(x) = \sum_{y \in S} P(y|x,\mu(x)) \left[ g(x,\mu(x),y) + J(y) \right].
+(T_\mu J)(x) 
+= \sum_{y \in S} P(y \mid x, \mu(x)) \big( g(x,\mu(x),y) + J(y) \big).
 $$
 
 It satisfies the fixed-point relation:
@@ -43,15 +45,16 @@ $$
 
 **Theorem (SSP Analogue of Theorem 2):**
 
-Let $\mu_t$ be the current policy and $\mu_{t+1}$ be the updated policy obtained via decentralized policy improvement using $J^{\text{ALP}}_{\mu_t}$. Under the stated assumptions, the following bound holds for all $x \in S$:
+Let $\mu_t$ be the current policy and $\mu_{t+1}$ be the updated policy obtained via decentralized policy improvement using $J^{\text{ALP}}_{\mu_t}$. Then, for all $x \in S$:
 $$
 J^{\mu_{t+1}}(x)
 \le
-J^{\mu_t}(x)
-+
-\beta_t \cdot H,
+J^{\mu_t}(x) + \beta_t H,
 $$
-where $\beta_t = \|J^{\mu_t} - J^{\text{ALP}}_{\mu_t}\|_\infty$.
+where
+$$
+\beta_t = \|J^{\mu_t} - J^{\text{ALP}}_{\mu_t}\|_\infty.
+$$
 
 ---
 
@@ -59,14 +62,15 @@ where $\beta_t = \|J^{\mu_t} - J^{\text{ALP}}_{\mu_t}\|_\infty$.
 
 Let $\mu := \mu_t$, $\tilde{\mu} := \mu_{t+1}$, and $\beta := \beta_t$.
 
-We begin by evaluating one step of the Bellman operator under the updated policy:
+We begin with one step of the Bellman operator under $\tilde{\mu}$:
 $$
 (T_{\tilde{\mu}} J^\mu)(x)
 =
-\sum_{y \in S} P(y|x,\tilde{\mu}(x)) \left[ g(x,\tilde{\mu}(x),y) + J^\mu(y) \right].
+\sum_{y \in S} P(y \mid x, \tilde{\mu}(x)) 
+\big( g(x,\tilde{\mu}(x),y) + J^\mu(y) \big).
 $$
 
-Using the approximation error bound,
+Using the approximation error bound:
 $$
 J^\mu(y) \le J^{\text{ALP}}_\mu(y) + \beta,
 $$
@@ -74,21 +78,24 @@ we obtain:
 $$
 T_{\tilde{\mu}} J^\mu(x)
 \le
-\sum_y P(\cdot)\left[g + J^{\text{ALP}}_\mu(y)\right] + \beta.
+\sum_{y \in S} P(y \mid x, \tilde{\mu}(x))
+\big( g(x,\tilde{\mu}(x),y) + J^{\text{ALP}}_\mu(y) \big)
++ \beta.
 $$
 
-Now observe:
+Observe that:
 $$
 T_{\tilde{\mu}} J^{\text{ALP}}_\mu(x)
 =
-\sum_y P(\cdot)\left[g + J^{\text{ALP}}_\mu(y)\right].
+\sum_{y \in S} P(y \mid x, \tilde{\mu}(x))
+\big( g(x,\tilde{\mu}(x),y) + J^{\text{ALP}}_\mu(y) \big).
 $$
 
-Since $\tilde{\mu}$ is greedy w.r.t. $J_{\mu}^{\text{ALP}}$,
+Since $\tilde{\mu}$ is greedy with respect to $J^{\text{ALP}}_\mu$:
 $$
-T_{\tilde{\mu}} J^{\text{ALP}}_\mu(x) 
+T_{\tilde{\mu}} J^{\text{ALP}}_\mu(x)
 \le
-T_{\mu} J^{\text{ALP}}_\mu(x).
+T_\mu J^{\text{ALP}}_\mu(x).
 $$
 
 Thus,
@@ -98,7 +105,7 @@ T_{\tilde{\mu}} J^\mu(x)
 T_\mu J^{\text{ALP}}_\mu(x) + \beta.
 $$
 
-From the ALP feasibility condition,
+From feasibility of the ALP:
 $$
 J^{\text{ALP}}_\mu(x) \le J^\mu(x), \quad \forall x \in S,
 $$
@@ -111,39 +118,42 @@ T_\mu J^\mu(x)
 J^\mu(x).
 $$
 
-Combining the above inequalities:
+Combining:
 $$
 T_{\tilde{\mu}} J^\mu(x)
 \le
 J^\mu(x) + \beta.
 $$
 
-Applying this recursively, for any integer $k \ge 1$:
+Applying recursively, for any $k \ge 1$:
 $$
 T_{\tilde{\mu}}^k J^\mu(x)
 \le
 J^\mu(x) + k\beta.
 $$
 
-Let $\tau$ denote the hitting time of the terminal state under policy $\tilde{\mu}$. Since $\tilde{\mu}$ is proper, $\tau$ is finite almost surely.
+Let $\tau$ be the hitting time of the terminal state under $\tilde{\mu}$. Since $\tilde{\mu}$ is proper, $\tau < \infty$ almost surely.
 
-Using the interpretation of repeated Bellman operators:
+Then:
 $$
 T_{\tilde{\mu}}^\tau J^\mu(x)
 \le
 J^\mu(x) + \tau \beta.
 $$
 
-Taking expectation with trajectories starting from $x$:
+Taking expectation:
 $$
 J^{\tilde{\mu}}(x)
 =
-\mathbb{E}_x^{\tilde{\mu}}\left[T_{\tilde{\mu}}^\tau J^\mu(x)\right]
+\mathbb{E}_x^{\tilde{\mu}}
+\big[
+T_{\tilde{\mu}}^\tau J^\mu(x)
+\big]
 \le
-J^\mu(x) + \beta \cdot \mathbb{E}_x^{\tilde{\mu}}[\tau].
+J^\mu(x) + \beta \, \mathbb{E}_x^{\tilde{\mu}}[\tau].
 $$
 
-Using the assumption $\mathbb{E}_x^{\tilde{\mu}}[\tau] \le H$, we obtain:
+Using $\mathbb{E}_x^{\tilde{\mu}}[\tau] \le H$:
 $$
 J^{\tilde{\mu}}(x)
 \le
